@@ -135,6 +135,21 @@ extern "C" {
 /** @brief 开环角度到观测角度渐进切换帧数 */
 #define VF_OBS_TRANSITION_FRAMES        5000U   /* 500ms @ 10kHz */
 
+/** @brief 速度环 PI 增益（降采样到 200Hz 运行） */
+#define VF_SPEED_PI_KP                  0.008f
+#define VF_SPEED_PI_KI                  0.0001f
+
+/** @brief 速度环 PI 输出限幅 (pu Iq) */
+#define VF_SPEED_PI_OUT_MAX             0.25f
+#define VF_SPEED_PI_OUT_MIN             0.0f
+
+/** @brief 速度环降采样率：每 N 帧执行一次速度 PI (10kHz/50=200Hz) */
+#define VF_SPEED_DECIMATION             50U
+
+/** @brief 速度环目标转速和加速度 */
+#define VF_SPEED_TARGET_RPM             300.0f
+#define VF_SPEED_ACCEL_RPM_PER_SEC      100.0f
+
 /** @brief IF 加速度 (RPM/s) */
 #define VF_IF_ACCEL_RPM_PER_SEC         50.0f
 
@@ -275,6 +290,11 @@ typedef struct
     VF_PI     stPiQ;            /**< q 轴电流 PI */
     float     f32VdPiOut;       /**< d 轴 PI 输出 (pu) */
     float     f32VqPiOut;       /**< q 轴 PI 输出 (pu) */
+
+    /*--- 速度环 ---*/
+    VF_PI     stPiSpeed;        /**< 速度 PI（观测器角度闭环后启用） */
+    float     f32SpeedTarget;   /**< 速度环 ramp 目标 (RPM) */
+    uint32_t  u32SpeedRunCount; /**< 速度环运行计数器 */
 
     /*--- dq 电流反馈 ---*/
     float     f32Id;            /**< d 轴电流反馈 (pu) */

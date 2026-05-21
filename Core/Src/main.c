@@ -352,6 +352,18 @@ static void VOFA_SendTelemetry(void)
 
     /* 12. 目前阶段 */
     pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, "%u", (unsigned int)g_stVFCtrl.eStage);
+    pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, ",");
+
+    /* 13. 速度环总输出 (pu Iq) */
+    pos = VOFA_AppendMilli(buf, pos, sizeof(buf), g_stVFCtrl.stPiSpeed.fOutPrev);
+    pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, ",");
+
+    /* 14. 速度环 P 项 (pu) */
+    pos = VOFA_AppendMilli(buf, pos, sizeof(buf), g_stVFCtrl.stPiSpeed.fProportional);
+    pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, ",");
+
+    /* 15. 速度环 I 项 (pu) */
+    pos = VOFA_AppendMilli(buf, pos, sizeof(buf), g_stVFCtrl.stPiSpeed.fIntegral);
     pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, "\n");
 
     if ((pos > 0) && (pos < (int)sizeof(buf)))

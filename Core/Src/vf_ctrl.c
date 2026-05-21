@@ -381,6 +381,7 @@ void VF_Init(void)
     g_stVFCtrl.u32IfBlendCount    = 0;
     g_stVFCtrl.u32IfRunCount      = 0;
     g_stVFCtrl.u32ObsBlendCount   = 0;
+    g_stVFCtrl.u32SpeedRunCount   = 0;
     g_stVFCtrl.f32IfITarget       = 0.0f;
     g_stVFCtrl.f32IdTarget        = 0.0f;
     g_stVFCtrl.f32IqTarget        = 0.0f;
@@ -780,17 +781,61 @@ void VF_ControlStep(void)
         {
             /* 过渡完成，完全使用观测器角度 */
             g_stVFCtrl.f32Theta = g_stVFCtrl.stObs.f32ThetaObs;
+
+            /*--- 仿照 FOC.c：预载速度 PI，确保 Iq 输出不跳变 ---*/
+            {
+                float fObsSpd = g_stVFCtrl.stObs.f32SpeedObs;
+                if (fObsSpd < 0.0f) fObsSpd = 0.0f;
+
+                /* 用当前 Iq_target 作为预载值，确保至少 VF_IF_IQ_TARGET_PU */
+                float fPreload = g_stVFCtrl.f32IqTarget;
+                if (fPreload < VF_IF_IQ_TARGET_PU)
+                    fPreload = VF_IF_IQ_TARGET_PU;
+
+                g_stVFCtrl.stPiSpeed.fKp       = VF_SPEED_PI_KP;
+                g_stVFCtrl.stPiSpeed.fKi       = VF_SPEED_PI_KI;
+                g_stVFCtrl.stPiSpeed.fErrPrev  = g_stVFCtrl.f32SpeedTarget - fObsSpd;
+                g_stVFCtrl.stPiSpeed.fOutPrev  = fPreload;
+                g_stVFCtrl.stPiSpeed.fIntegral = fPreload;
+                g_stVFCtrl.stPiSpeed.fProportional = VF_SPEED_PI_KP * g_stVFCtrl.stPiSpeed.fErrPrev;
+                g_stVFCtrl.stPiSpeed.fOutMax   = VF_SPEED_PI_OUT_MAX;
+                g_stVFCtrl.stPiSpeed.fOutMin   = VF_SPEED_PI_OUT_MIN;
+
+                /* 同时预载 q 电流 PI，保持 Vq 连续 */
+                g_stVFCtrl.stPiQ.fErrPrev = fPreload - g_stVFCtrl.f32Iq;
+                g_stVFCtrl.stPiQ.fOutPrev = g_stVFCtrl.f32VqPiOut;
+                g_stVFCtrl.stPiQ.fIntegral = g_stVFCtrl.f32VqPiOut;
+                g_stVFCtrl.stPiQ.fProportional = VF_IF_PI_KP * g_stVFCtrl.stPiQ.fErrPrev;
+            }
+
+            /* 速度 ramp 从当前观测速度开始，最终目标 300 RPM */
+            g_stVFCtrl.f32TargetRpm  = VF_SPEED_TARGET_RPM;
+            g_stVFCtrl.f32SpeedTarget = g_stVFCtrl.stObs.f32SpeedObs;
+            if (g_stVFCtrl.f32SpeedTarget < 50.0f)
+                g_stVFCtrl.f32SpeedTarget = 50.0f;
+            g_stVFCtrl.u32SpeedRunCount = 0;
             g_stVFCtrl.eStage = VF_STAGE_OBS_RUNNING;
         }
         break;
     }
 
     /*----------------------------------------------------------------------*/
-    /* OBS_RUNNING: 使用观测器电角度运行 dq 电流环                           */
+    /* OBS_RUNNING: 观测器角度 + 速度环 + dq 电流环                         */
+    /*             速度 ramp 到 300RPM，速度 PI 输出作为 Iq 目标            */
     /*----------------------------------------------------------------------*/
     case VF_STAGE_OBS_RUNNING:
     {
-        g_stVFCtrl.f32CurrentRpm = g_stVFCtrl.f32TargetRpm;
+        g_stVFCtrl.u32SpeedRunCount++;
+
+        /* 速度 ramp：从当前观测速度升至 300 RPM */
+        if (g_stVFCtrl.f32SpeedTarget < VF_SPEED_TARGET_RPM)
+        {
+            g_stVFCtrl.f32SpeedTarget += VF_SPEED_ACCEL_RPM_PER_SEC * VF_CTRL_TS;
+            if (g_stVFCtrl.f32SpeedTarget > VF_SPEED_TARGET_RPM)
+                g_stVFCtrl.f32SpeedTarget = VF_SPEED_TARGET_RPM;
+        }
+
+        g_stVFCtrl.f32CurrentRpm = g_stVFCtrl.f32SpeedTarget;
 
         fOmegaElec = g_stVFCtrl.f32CurrentRpm
                    * VF_2PI * (float)MOTOR_POLE_PAIRS / 60.0f;
@@ -808,11 +853,23 @@ void VF_ControlStep(void)
                 g_stVFCtrl.f32Theta,
                 &g_stVFCtrl.f32Id, &g_stVFCtrl.f32Iq);
 
+        /* 速度 PI（降采样运行，避免 10kHz 过冲导致 Bang-Bang） */
+        if ((g_stVFCtrl.u32SpeedRunCount % VF_SPEED_DECIMATION) == 0U)
+        {
+            g_stVFCtrl.f32IqTarget = vf_pi_run(
+                &g_stVFCtrl.stPiSpeed,
+                g_stVFCtrl.f32SpeedTarget,
+                g_stVFCtrl.stObs.f32SpeedObs);
+            g_stVFCtrl.f32IfITarget = g_stVFCtrl.f32IqTarget;
+        }
+
+        /* d 轴 PI：Id_ref = 0 */
         g_stVFCtrl.f32VdPiOut = vf_pi_run(
             &g_stVFCtrl.stPiD,
             g_stVFCtrl.f32IdTarget,
             g_stVFCtrl.f32Id);
 
+        /* q 轴 PI：Iq_ref = 速度 PI 输出 */
         g_stVFCtrl.f32VqPiOut = vf_pi_run(
             &g_stVFCtrl.stPiQ,
             g_stVFCtrl.f32IqTarget,
