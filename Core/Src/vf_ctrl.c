@@ -388,6 +388,7 @@ void VF_Init(void)
     g_stVFCtrl.f32VdPiOut         = 0.0f;
     g_stVFCtrl.f32VqPiOut         = 0.0f;
     g_stVFCtrl.f32ThetaOpen       = 0.0f;
+    g_stVFCtrl.f32SpeedPiOutMax   = 0.25f;
     VF_LuenbergerInit();
 }
 
@@ -397,6 +398,15 @@ void VF_Init(void)
 void VF_SetTargetRpm(float fTargetRpm)
 {
     g_stVFCtrl.f32TargetRpm = fTargetRpm;
+
+    /* 根据目标转速动态调整速度 PI 输出限幅 */
+    if (fTargetRpm >= 800.0f)
+        g_stVFCtrl.f32SpeedPiOutMax = 0.75f;
+    else if (fTargetRpm >= 450.0f)
+        g_stVFCtrl.f32SpeedPiOutMax = 0.50f;
+    else
+        g_stVFCtrl.f32SpeedPiOutMax = 0.25f;
+    g_stVFCtrl.stPiSpeed.fOutMax = g_stVFCtrl.f32SpeedPiOutMax;
 
     /* 如果当前停止且目标 > 0，自动进入启动流程 */
     if ((g_stVFCtrl.eStage == VF_STAGE_STOP) && (fTargetRpm > 0.0f))
@@ -794,11 +804,10 @@ void VF_ControlStep(void)
 
                 g_stVFCtrl.stPiSpeed.fKp       = VF_SPEED_PI_KP;
                 g_stVFCtrl.stPiSpeed.fKi       = VF_SPEED_PI_KI;
-                g_stVFCtrl.stPiSpeed.fErrPrev  = g_stVFCtrl.f32SpeedTarget - fObsSpd;
+                /* fErrPrev / fProportional 在下方设完 f32SpeedTarget 后重算 */
                 g_stVFCtrl.stPiSpeed.fOutPrev  = fPreload;
                 g_stVFCtrl.stPiSpeed.fIntegral = fPreload;
-                g_stVFCtrl.stPiSpeed.fProportional = VF_SPEED_PI_KP * g_stVFCtrl.stPiSpeed.fErrPrev;
-                g_stVFCtrl.stPiSpeed.fOutMax   = VF_SPEED_PI_OUT_MAX;
+                g_stVFCtrl.stPiSpeed.fOutMax   = g_stVFCtrl.f32SpeedPiOutMax;
                 g_stVFCtrl.stPiSpeed.fOutMin   = VF_SPEED_PI_OUT_MIN;
 
                 /* 同时预载 q 电流 PI，保持 Vq 连续 */
@@ -808,11 +817,20 @@ void VF_ControlStep(void)
                 g_stVFCtrl.stPiQ.fProportional = VF_IF_PI_KP * g_stVFCtrl.stPiQ.fErrPrev;
             }
 
-            /* 速度 ramp 从当前观测速度开始，最终目标 300 RPM */
-            g_stVFCtrl.f32TargetRpm  = VF_SPEED_TARGET_RPM;
+            /* 速度 ramp 从当前观测速度开始，最终目标由 f32TargetRpm（ADC 设定）决定 */
+            /* 不覆盖 f32TargetRpm — 保留主循环 ADC 设定的值 */
             g_stVFCtrl.f32SpeedTarget = g_stVFCtrl.stObs.f32SpeedObs;
             if (g_stVFCtrl.f32SpeedTarget < 50.0f)
                 g_stVFCtrl.f32SpeedTarget = 50.0f;
+
+            /* ★ 预载 PI 的 fErrPrev 必须在 f32SpeedTarget 设完之后，否则会用 0 算 */
+            {
+                float fObsSpd2 = g_stVFCtrl.stObs.f32SpeedObs;
+                if (fObsSpd2 < 0.0f) fObsSpd2 = 0.0f;
+                g_stVFCtrl.stPiSpeed.fErrPrev  = g_stVFCtrl.f32SpeedTarget - fObsSpd2;
+                g_stVFCtrl.stPiSpeed.fProportional = VF_SPEED_PI_KP * g_stVFCtrl.stPiSpeed.fErrPrev;
+            }
+
             g_stVFCtrl.u32SpeedRunCount = 0;
             g_stVFCtrl.eStage = VF_STAGE_OBS_RUNNING;
         }
@@ -821,18 +839,28 @@ void VF_ControlStep(void)
 
     /*----------------------------------------------------------------------*/
     /* OBS_RUNNING: 观测器角度 + 速度环 + dq 电流环                         */
-    /*             速度 ramp 到 300RPM，速度 PI 输出作为 Iq 目标            */
+    /*             速度 ramp 到 f32TargetRpm（ADC 旋钮设定），              */
+    /*             速度 PI 输出作为 Iq 目标                                  */
     /*----------------------------------------------------------------------*/
     case VF_STAGE_OBS_RUNNING:
     {
         g_stVFCtrl.u32SpeedRunCount++;
 
-        /* 速度 ramp：从当前观测速度升至 300 RPM */
-        if (g_stVFCtrl.f32SpeedTarget < VF_SPEED_TARGET_RPM)
+        /* 速度 ramp：跟踪 f32TargetRpm（ADC 旋钮设定），支持加减速 */
         {
-            g_stVFCtrl.f32SpeedTarget += VF_SPEED_ACCEL_RPM_PER_SEC * VF_CTRL_TS;
-            if (g_stVFCtrl.f32SpeedTarget > VF_SPEED_TARGET_RPM)
-                g_stVFCtrl.f32SpeedTarget = VF_SPEED_TARGET_RPM;
+            float fStep = VF_SPEED_ACCEL_RPM_PER_SEC * VF_CTRL_TS;
+            if (g_stVFCtrl.f32SpeedTarget < g_stVFCtrl.f32TargetRpm)
+            {
+                g_stVFCtrl.f32SpeedTarget += fStep;
+                if (g_stVFCtrl.f32SpeedTarget > g_stVFCtrl.f32TargetRpm)
+                    g_stVFCtrl.f32SpeedTarget = g_stVFCtrl.f32TargetRpm;
+            }
+            else if (g_stVFCtrl.f32SpeedTarget > g_stVFCtrl.f32TargetRpm)
+            {
+                g_stVFCtrl.f32SpeedTarget -= fStep;
+                if (g_stVFCtrl.f32SpeedTarget < g_stVFCtrl.f32TargetRpm)
+                    g_stVFCtrl.f32SpeedTarget = g_stVFCtrl.f32TargetRpm;
+            }
         }
 
         g_stVFCtrl.f32CurrentRpm = g_stVFCtrl.f32SpeedTarget;

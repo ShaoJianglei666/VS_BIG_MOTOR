@@ -295,6 +295,7 @@ typedef struct
     VF_PI     stPiSpeed;        /**< 速度 PI（观测器角度闭环后启用） */
     float     f32SpeedTarget;   /**< 速度环 ramp 目标 (RPM) */
     uint32_t  u32SpeedRunCount; /**< 速度环运行计数器 */
+    float     f32SpeedPiOutMax; /**< 速度 PI 输出限幅，随目标转速动态变化 */
 
     /*--- dq 电流反馈 ---*/
     float     f32Id;            /**< d 轴电流反馈 (pu) */

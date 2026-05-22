@@ -45,7 +45,13 @@
 #define SPEED_RUN          500      /* 目标转速 (RPM) */
 #define SPEED_STEP_RPM     50.0f
 #endif
-/* USER CODE END PD */
+
+/*--- ADC 旋钮调速映射（两模式共用） ---*/
+#define ADC_RPM_MIN_VAL    4000     /* 旋钮最小时 ADC 读数（映射起点） */
+#define ADC_RPM_MAX_VAL    2100     /* 旋钮最大时 ADC 读数（映射终点） */
+#define ADC_RPM_MIN_SPEED  300.0f   /* 最低目标转速 (RPM) */
+#define ADC_RPM_MAX_SPEED  1250.0f  /* 最高目标转速 (RPM) */
+/* USER CODE END PD
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
@@ -58,7 +64,7 @@
 static uint8_t s_u8MotorRunning = 0;   /* 电机运行标志: 0=停止, 1=运行 */
 
 /*--- ADC1 规则组滑动窗口滤波器 ---*/
-#define ADC_FILTER_WIN     8                       /* 窗口大小（2 的幂，可用移位优化） */
+#define ADC_FILTER_WIN     20                      /* 滑动窗口大小 */
 static uint16_t s_u16AdcBuf[ADC_FILTER_WIN] = {0}; /* 采样缓冲区 */
 static uint8_t  s_u8AdcIdx = 0;                    /* 当前写入位置 */
 static uint32_t s_u32AdcSum = 0;                   /* 窗口内累加和 */
@@ -89,8 +95,8 @@ static uint16_t ADC_GetFilteredValue(void)
     s_u16AdcBuf[s_u8AdcIdx] = u16NewVal;
     s_u32AdcSum += u16NewVal;
 
-    /* 环形指针步进 */
-    s_u8AdcIdx = (s_u8AdcIdx + 1) & (ADC_FILTER_WIN - 1);
+    /* 环形指针步进（非 2 的幂，用取模） */
+    s_u8AdcIdx = (s_u8AdcIdx + 1) % ADC_FILTER_WIN;
 
     return (uint16_t)(s_u32AdcSum / ADC_FILTER_WIN);
 }
@@ -567,11 +573,15 @@ int main(void)
         }
         else
         {
+            /* 安全启动：ADC 读数 > 4000 时才允许启动，否则无法启动 */
+            if (ADC_GetFilteredValue() > ADC_RPM_MIN_VAL)
+            {
 #if USE_VF_CTRL
-            VF_Motor_Start();
+                VF_Motor_Start();
 #else
-            Motor_Start();
+                Motor_Start();
 #endif
+            }
         }
     }
 
@@ -606,6 +616,27 @@ int main(void)
 #endif
     }
 #endif
+
+    /*--- ADC 旋钮连续调速（电机运行时生效） ---*/
+    if (s_u8MotorRunning)
+    {
+        uint16_t adc_val = ADC_GetFilteredValue();
+        float fTargetRpm;
+
+        if (adc_val >= ADC_RPM_MIN_VAL)
+            fTargetRpm = ADC_RPM_MIN_SPEED;
+        else if (adc_val <= ADC_RPM_MAX_VAL)
+            fTargetRpm = ADC_RPM_MAX_SPEED;
+        else
+            fTargetRpm = ADC_RPM_MIN_SPEED + (ADC_RPM_MAX_SPEED - ADC_RPM_MIN_SPEED) *
+                         (float)(ADC_RPM_MIN_VAL - adc_val) / (float)(ADC_RPM_MIN_VAL - ADC_RPM_MAX_VAL);
+
+#if USE_VF_CTRL
+        VF_SetTargetRpm(fTargetRpm);
+#else
+        g_stCtrl.f32TargetRpm = fTargetRpm;
+#endif
+    }
 
     /*--- LED1 (PB12) 以 1Hz 闪烁 ---*/
     {
