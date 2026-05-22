@@ -37,7 +37,7 @@
 #if USE_VF_CTRL
 #define SPEED_RUN          200.0f   /* 目标转速 (RPM) */
 #define SPEED_STEP_RPM     50.0f    /* 加减速步长 (RPM) */
-#define VF_TARGET_ACCEL    200.0f   /* VF 加速度 (RPM/s) */
+#define VF_TARGET_ACCEL    150.0f   /* VF 加速度 (RPM/s) */
 #endif
 
 /*--- IF/FOC 模式参数（USE_VF_CTRL=0 时生效） ---*/
@@ -64,10 +64,13 @@
 static uint8_t s_u8MotorRunning = 0;   /* 电机运行标志: 0=停止, 1=运行 */
 
 /*--- ADC1 规则组滑动窗口滤波器 ---*/
-#define ADC_FILTER_WIN     20                      /* 滑动窗口大小 */
+#define ADC_FILTER_WIN     40                      /* 滑动窗口大小（越大越平滑） */
 static uint16_t s_u16AdcBuf[ADC_FILTER_WIN] = {0}; /* 采样缓冲区 */
 static uint8_t  s_u8AdcIdx = 0;                    /* 当前写入位置 */
 static uint32_t s_u32AdcSum = 0;                   /* 窗口内累加和 */
+
+/*--- ADC 调速输出限幅（防抖） ---*/
+#define ADC_RPM_DEADBAND   10.0f    /* RPM 死区：新值与当前值差小于此值时保持不变 */
 /* USER CODE END PV
 
 /* Private function prototypes -----------------------------------------------*/
@@ -622,6 +625,7 @@ int main(void)
     {
         uint16_t adc_val = ADC_GetFilteredValue();
         float fTargetRpm;
+        static float s_fLastTargetRpm = 0.0f;
 
         if (adc_val >= ADC_RPM_MIN_VAL)
             fTargetRpm = ADC_RPM_MIN_SPEED;
@@ -630,6 +634,18 @@ int main(void)
         else
             fTargetRpm = ADC_RPM_MIN_SPEED + (ADC_RPM_MAX_SPEED - ADC_RPM_MIN_SPEED) *
                          (float)(ADC_RPM_MIN_VAL - adc_val) / (float)(ADC_RPM_MIN_VAL - ADC_RPM_MAX_VAL);
+
+        /* RPM 死区滤波：变化量小于阈值时不更新，消除抖动 */
+        {
+            float fDiff = fTargetRpm - s_fLastTargetRpm;
+            if (fDiff > ADC_RPM_DEADBAND)
+                fTargetRpm = s_fLastTargetRpm + ADC_RPM_DEADBAND;
+            else if (fDiff < -ADC_RPM_DEADBAND)
+                fTargetRpm = s_fLastTargetRpm - ADC_RPM_DEADBAND;
+            else
+                fTargetRpm = s_fLastTargetRpm;
+        }
+        s_fLastTargetRpm = fTargetRpm;
 
 #if USE_VF_CTRL
         VF_SetTargetRpm(fTargetRpm);

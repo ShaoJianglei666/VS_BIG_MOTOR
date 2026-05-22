@@ -54,6 +54,9 @@ extern "C" {
 /** @brief 电压基值 (V) = Vbus / √3 */
 #define VF_BASE_VOLTAGE_V               (MOTOR_BUS_VOLTAGE / VF_SQRT3)
 
+/** @brief 电流基值 (A)，1.0 pu = 50A */
+#define VF_BASE_CURRENT_A               50.0f
+
 /**
   * @brief V/f 比率 (V/Hz)
   *        按反电势系数计算额定 V/f：
@@ -104,7 +107,7 @@ extern "C" {
 #define VF_START_RPM                    80.0f
 
 /** @brief 启动前对齐时间 (帧) — 施加直流电压对齐转子 */
-#define VF_ALIGN_FRAMES                 1500U   /* 150ms @ 10kHz */
+#define VF_ALIGN_FRAMES                 3000U   /* 300ms @ 10kHz */
 
 /** @brief 对齐电压 (pu) — 对齐阶段 d 轴电压幅值 */
 #define VF_ALIGN_VOLTAGE_PU             0.04f
@@ -115,7 +118,7 @@ extern "C" {
 /** @brief 电流限制 (pu) — 超过此值则降低 Vq 防止过流
   *        基于 ADC 采样的相电流幅值做简单限幅
   */
-#define VF_CURRENT_LIMIT_PU             0.50f   /* 5A@10A基值 */
+#define VF_CURRENT_LIMIT_PU             0.20f   /* 5A@50A基值 */
 
 /** @brief VF→IF 切换延时 (帧) — VF_RUNNING 后等待 2s 再切 */
 #define VF_IF_SWITCH_DELAY              20000U  /* 2s @ 10kHz */
@@ -124,7 +127,7 @@ extern "C" {
 #define VF_IF_BLEND_FRAMES              20000U  /* 2s @ 10kHz */
 
 /** @brief IF 电流目标 (pu) — q 轴电流 */
-#define VF_IF_IQ_TARGET_PU              0.15f   /* 1.5A */
+#define VF_IF_IQ_TARGET_PU              0.03f   /* 1.5A */
 
 /** @brief IF_RUNNING 保持时间 (帧) — 电流环稳定后再加速 */
 #define VF_IF_HOLD_FRAMES               20000U  /* 2s @ 10kHz */
@@ -136,11 +139,11 @@ extern "C" {
 #define VF_OBS_TRANSITION_FRAMES        5000U   /* 500ms @ 10kHz */
 
 /** @brief 速度环 PI 增益（降采样到 200Hz 运行） */
-#define VF_SPEED_PI_KP                  0.008f
-#define VF_SPEED_PI_KI                  0.0001f
+#define VF_SPEED_PI_KP                  0.004f
+#define VF_SPEED_PI_KI                  0.000f
 
 /** @brief 速度环 PI 输出限幅 (pu Iq) */
-#define VF_SPEED_PI_OUT_MAX             0.25f
+#define VF_SPEED_PI_OUT_MAX             0.05f   /* 2.5A@50A基值 */
 #define VF_SPEED_PI_OUT_MIN             0.0f
 
 /** @brief 速度环降采样率：每 N 帧执行一次速度 PI (10kHz/50=200Hz) */
@@ -168,16 +171,16 @@ extern "C" {
 #define VF_IF_PI_OUT_MIN                (-VF_IF_PI_OUT_MAX)
 
 /** @brief IF 过流保护阈值 (pu) — 暂提高避免切换毛刺误触发 */
-#define VF_IF_OC_LIMIT_PU               1.5f    /* 15A */
+#define VF_IF_OC_LIMIT_PU               0.30f   /* 15A */
 
 /*--- Luenberger BEMF observer / PLL parameters（仅观测，不参与控制）---*/
 #define VF_OBS_MAX_SPEED_RPM            7400.0f
 #define VF_OBS_MAX_OMEGA_ELEC           (VF_OBS_MAX_SPEED_RPM * VF_2PI \
                                          * (float)MOTOR_POLE_PAIRS / 60.0f)
 #define VF_OBS_ELEC_OMEGA_TO_RPM        (60.0f / (VF_2PI * (float)MOTOR_POLE_PAIRS))
-#define VF_OBS_RS_PU                    (MOTOR_PHASE_RESISTANCE * 10.0f \
+#define VF_OBS_RS_PU                    (MOTOR_PHASE_RESISTANCE * VF_BASE_CURRENT_A \
                                          / VF_BASE_VOLTAGE_V)
-#define VF_OBS_LS_OVER_TS_PU            (MOTOR_PHASE_INDUCTANCE * 10.0f \
+#define VF_OBS_LS_OVER_TS_PU            (MOTOR_PHASE_INDUCTANCE * VF_BASE_CURRENT_A \
                                          / (VF_BASE_VOLTAGE_V * VF_CTRL_TS))
 #define VF_OBS_CURRENT_GAIN             0.20f
 #define VF_OBS_BEMF_GAIN                0.002f
@@ -189,6 +192,18 @@ extern "C" {
 #define VF_OBS_MIN_BEMF_PU              0.01f
 #define VF_OBS_LOCK_BEMF_SQ_THR         0.0004f
 #define VF_OBS_LOCK_SPEED_RPM           150.0f
+
+/*--- 电流采样一阶 IIR 低通滤波参数 ---*/
+
+/**
+  * @brief 一阶 IIR 低通滤波器系数
+  *        y[n] = y[n-1] + alpha * (x[n] - y[n-1])
+  *        alpha = 1 - exp(-2*pi*fc/fs)
+  *        fs = 10kHz, fc ≈ 300Hz → alpha ≈ 0.17
+  *        增大 alpha → 响应更快但滤波效果减弱
+  *        减小 alpha → 滤波更强但响应变慢
+  */
+#define VF_CURRENT_LPF_ALPHA            0.17f
 
 /** @brief 对齐占空比 (50%=中点) */
 #define PWM_HALF_CYCLE_VF               (17000U / 4U)
@@ -302,10 +317,12 @@ typedef struct
     float     f32Iq;            /**< q 轴电流反馈 (pu) */
 
     /*--- 电流监控 ---*/
-    float     f32Ia;            /**< A 相电流 (pu) */
-    float     f32Ib;            /**< B 相电流 (pu) */
-    float     f32Ialpha;        /**< α 轴电流 (pu) */
-    float     f32Ibeta;         /**< β 轴电流 (pu) */
+    float     f32Ia;            /**< A 相电流 (pu) — 一阶 LPF 滤波后 */
+    float     f32Ib;            /**< B 相电流 (pu) — 一阶 LPF 滤波后 */
+    float     f32IaRaw;         /**< A 相电流原始采样值 (pu)，仅诊断用 */
+    float     f32IbRaw;         /**< B 相电流原始采样值 (pu)，仅诊断用 */
+    float     f32Ialpha;        /**< α 轴电流 (pu) — 基于滤波后的值 */
+    float     f32Ibeta;         /**< β 轴电流 (pu) — 基于滤波后的值 */
     float     f32CurrentMag;    /**< 电流空间矢量幅值 (pu) */
 
     /*--- 诊断 ---*/
