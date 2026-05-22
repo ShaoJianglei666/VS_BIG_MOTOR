@@ -56,7 +56,13 @@
 
 /* USER CODE BEGIN PV */
 static uint8_t s_u8MotorRunning = 0;   /* 电机运行标志: 0=停止, 1=运行 */
-/* USER CODE END PV */
+
+/*--- ADC1 规则组滑动窗口滤波器 ---*/
+#define ADC_FILTER_WIN     8                       /* 窗口大小（2 的幂，可用移位优化） */
+static uint16_t s_u16AdcBuf[ADC_FILTER_WIN] = {0}; /* 采样缓冲区 */
+static uint8_t  s_u8AdcIdx = 0;                    /* 当前写入位置 */
+static uint32_t s_u32AdcSum = 0;                   /* 窗口内累加和 */
+/* USER CODE END PV
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
@@ -69,6 +75,25 @@ static void VOFA_SendTelemetry(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+/**
+  * @brief  读取 ADC1 规则组值并做滑动窗口滤波
+  * @retval 滤波后的 ADC 原始值（无符号 12-bit）
+  */
+static uint16_t ADC_GetFilteredValue(void)
+{
+    uint16_t u16NewVal = (uint16_t)HAL_ADC_GetValue(&hadc1);
+
+    /* 减去最旧值，加入新值 */
+    s_u32AdcSum -= s_u16AdcBuf[s_u8AdcIdx];
+    s_u16AdcBuf[s_u8AdcIdx] = u16NewVal;
+    s_u32AdcSum += u16NewVal;
+
+    /* 环形指针步进 */
+    s_u8AdcIdx = (s_u8AdcIdx + 1) & (ADC_FILTER_WIN - 1);
+
+    return (uint16_t)(s_u32AdcSum / ADC_FILTER_WIN);
+}
 
 /**
   * @brief  启动电机：开启 PWM + ADC 中断 + 设定目标转速
@@ -364,6 +389,10 @@ static void VOFA_SendTelemetry(void)
 
     /* 15. 速度环 I 项 (pu) */
     pos = VOFA_AppendMilli(buf, pos, sizeof(buf), g_stVFCtrl.stPiSpeed.fIntegral);
+    pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, ",");
+
+    /* 16. ADC1 规则组值 (滑动滤波后) */
+    pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, "%u", (unsigned int)ADC_GetFilteredValue());
     pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, "\n");
 
     if ((pos > 0) && (pos < (int)sizeof(buf)))
@@ -431,6 +460,8 @@ static void VOFA_SendTelemetry(void)
     pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, ",");
     pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, "%u", (unsigned int)(ADC2->JDR1));
     pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, ",%u", (unsigned int)g_stCtrl.u16DiagStage);
+    pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, ",");
+    pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, "%u", (unsigned int)ADC_GetFilteredValue());
     pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, "\n");
 
     if ((pos > 0) && (pos < (int)sizeof(buf)))
@@ -454,11 +485,17 @@ int main(void)
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
+
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
+
   /* USER CODE BEGIN Init */
 
   /* USER CODE END Init */
+
+  /* Configure the system clock */
   SystemClock_Config();
+
   /* USER CODE BEGIN SysInit */
 
   /* USER CODE END SysInit */
@@ -473,14 +510,16 @@ int main(void)
   MX_TIM1_Init();
   MX_DAC1_Init();
   MX_TIM2_Init();
+  MX_TIM3_Init();
   MX_USART3_UART_Init();
+  MX_TIM6_Init();
   /* USER CODE BEGIN 2 */
 
   HAL_OPAMP_Start(&hopamp1);
   HAL_OPAMP_Start(&hopamp2);
   HAL_OPAMP_Start(&hopamp3);
   HAL_Delay(10);
-
+  
   /*--- FOC 初始化 ---*/
   FOC_Init();
 
@@ -501,7 +540,8 @@ int main(void)
   /* TIM1 中断优先级（仅配置，不使能，由 Motor_Start 使能） */
   HAL_NVIC_SetPriority(TIM1_UP_TIM16_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(TIM1_UP_TIM16_IRQn);
-
+  HAL_TIM_Base_Start(&htim6);//启动 TIM6 作为ADC规则组节拍（10ms）
+  HAL_ADC_Start(&hadc1);           // 启动 ADC1 规则组（TIM6 硬件触发，无中断）
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -652,8 +692,14 @@ void Error_Handler(void)
   }
   /* USER CODE END Error_Handler_Debug */
 }
-
 #ifdef USE_FULL_ASSERT
+/**
+  * @brief  Reports the name of the source file and the source line number
+  *         where the assert_param error has occurred.
+  * @param  file: pointer to the source file name
+  * @param  line: assert_param error line source number
+  * @retval None
+  */
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
