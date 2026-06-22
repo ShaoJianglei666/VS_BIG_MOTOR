@@ -332,7 +332,7 @@ static float VOFA_WrapDeg180(float deg)
 #if USE_VF_CTRL
 static void VOFA_SendTelemetry(void)
 {
-    char buf[256];
+/*  */    char buf[384];
     int pos = 0;
     float theta_deg = VOFA_RadToDeg(g_stVFCtrl.f32Theta);
     float theta_obs_deg = VOFA_RadToDeg(g_stVFCtrl.stObs.f32ThetaObs);
@@ -402,6 +402,46 @@ static void VOFA_SendTelemetry(void)
 
     /* 16. ADC1 规则组值 (滑动滤波后) */
     pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, "%u", (unsigned int)ADC_GetFilteredValue());
+    pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, ",");
+
+    /* 17. SVPWM Ta */
+    pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, "%u", (unsigned int)g_stVFCtrl.u16Ta);
+    pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, ",");
+
+    /* 18. SVPWM Tb */
+    pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, "%u", (unsigned int)g_stVFCtrl.u16Tb);
+    pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, ",");
+
+    /* 19. SVPWM Tc */
+    pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, "%u", (unsigned int)g_stVFCtrl.u16Tc);
+    pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, ",");
+
+    /* 20. IqBase (pu) */
+    pos = VOFA_AppendMilli(buf, pos, sizeof(buf), g_stVFCtrl.f32IqBase);
+    pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, ",");
+
+    /* 21. IqTarget (pu) */
+    pos = VOFA_AppendMilli(buf, pos, sizeof(buf), g_stVFCtrl.f32IqTarget);
+    pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, ",");
+
+    /* 22. VqPiOut (pu) — q电流PI输出电压 */
+    pos = VOFA_AppendMilli(buf, pos, sizeof(buf), g_stVFCtrl.f32VqPiOut);
+    pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, ",");
+
+    /* 23. f32Ia (pu) — A相电流原始值 */
+    pos = VOFA_AppendMilli(buf, pos, sizeof(buf), g_stVFCtrl.f32IaRaw);
+    pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, ",");
+
+    /* 24. f32Ib (pu) — B相电流原始值 */
+    pos = VOFA_AppendMilli(buf, pos, sizeof(buf), g_stVFCtrl.f32IbRaw);
+    pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, ",");
+
+    /* 25. CurrentMag (pu) — 电流幅值(与限幅比较) */
+    pos = VOFA_AppendMilli(buf, pos, sizeof(buf), g_stVFCtrl.f32CurrentMag);
+    pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, ",");
+
+    /* 26. VF阶段VqRef (pu) — 最终输出电压指令 */
+    pos = VOFA_AppendMilli(buf, pos, sizeof(buf), g_stVFCtrl.f32VqRef);
     pos += snprintf(&buf[pos], sizeof(buf) - (size_t)pos, "\n");
 
     if ((pos > 0) && (pos < (int)sizeof(buf)))

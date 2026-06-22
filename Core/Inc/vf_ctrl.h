@@ -54,8 +54,9 @@ extern "C" {
 /** @brief 电压基值 (V) = Vbus / √3 */
 #define VF_BASE_VOLTAGE_V               (MOTOR_BUS_VOLTAGE / VF_SQRT3)
 
-/** @brief 电流基值 (A)，1.0 pu = 50A */
-#define VF_BASE_CURRENT_A               50.0f
+/** @brief 电流基值 (A)，1.0 pu = 94.3A
+  *        根据硬件计算：3.3V / (0.002Ω × 17.5倍) = 94.3A */
+#define VF_BASE_CURRENT_A               94.3f
 
 /**
   * @brief V/f 比率 (V/Hz)
@@ -117,11 +118,11 @@ extern "C" {
 
 /** @brief 电流限制 (pu) — 超过此值则降低 Vq 防止过流
   *        基于 ADC 采样的相电流幅值做简单限幅
-  */
-#define VF_CURRENT_LIMIT_PU             0.30f   /* 15A@50A基值 */
+  *        0.53pu × 94.3A ≈ 50A */
+#define VF_CURRENT_LIMIT_PU             0.32f   /* 50A@94.3A基值 */
 
 /** @brief VF→IF 切换延时 (帧) — VF_RUNNING 后等待 2s 再切 */
-#define VF_IF_SWITCH_DELAY              20000U  /* 2s @ 10kHz */
+#define VF_IF_SWITCH_DELAY              5000U  /* 2s @ 10kHz */
 
 /** @brief VF→IF blend 过渡帧数 */
 #define VF_IF_BLEND_FRAMES              20000U  /* 2s @ 10kHz */
@@ -133,21 +134,21 @@ extern "C" {
 #define VF_IF_HOLD_FRAMES               20000U  /* 2s @ 10kHz */
 
 /** @brief IF 开环稳定后切观测角的等待帧数 */
-#define VF_OBS_SWITCH_DELAY             50000U  /* 5s @ 10kHz */
+#define VF_OBS_SWITCH_DELAY             25000U  /* 5s @ 10kHz */
 
 /** @brief 开环角度到观测角度渐进切换帧数 */
 #define VF_OBS_TRANSITION_FRAMES        5000U   /* 500ms @ 10kHz */
 
-/** @brief 速度环 PI 增益（降采样到 200Hz 运行） */
+/** @brief 速度环 PI 增益（降采样到 100Hz 运行） */
 #define VF_SPEED_PI_KP                  0.004f
 #define VF_SPEED_PI_KI                  0.000f
 
 /** @brief 速度环 PI 输出限幅 (pu Iq) */
-#define VF_SPEED_PI_OUT_MAX             0.05f   /* 2.5A@50A基值 */
+#define VF_SPEED_PI_OUT_MAX             0.05f   /* 4.7A@94.3A基值 */
 #define VF_SPEED_PI_OUT_MIN             0.0f
 
-/** @brief 速度环降采样率：每 N 帧执行一次速度 PI (10kHz/50=200Hz) */
-#define VF_SPEED_DECIMATION             50U
+/** @brief 速度环降采样率：每 N 帧执行一次速度 PI (10kHz/100=100Hz) */
+#define VF_SPEED_DECIMATION             100U
 
 /** @brief 速度环目标转速和加速度 */
 #define VF_SPEED_TARGET_RPM             300.0f
@@ -182,7 +183,7 @@ extern "C" {
                                          / VF_BASE_VOLTAGE_V)
 #define VF_OBS_LS_OVER_TS_PU            (MOTOR_PHASE_INDUCTANCE * VF_BASE_CURRENT_A \
                                          / (VF_BASE_VOLTAGE_V * VF_CTRL_TS))
-#define VF_OBS_CURRENT_GAIN             0.20f
+#define VF_OBS_CURRENT_GAIN             0.38f
 #define VF_OBS_BEMF_GAIN                0.002f
 #define VF_OBS_BEMF_LPF_GAIN            0.25f
 #define VF_OBS_PLL_KP                   20.0f
@@ -190,7 +191,7 @@ extern "C" {
 #define VF_OBS_PLL_SPEED_BLEND          0.002f
 #define VF_OBS_PLL_ERR_MAX              0.25f
 #define VF_OBS_MIN_BEMF_PU              0.01f
-#define VF_OBS_LOCK_BEMF_SQ_THR         0.0004f
+#define VF_OBS_LOCK_BEMF_SQ_THR         0.00005f
 #define VF_OBS_LOCK_SPEED_RPM           150.0f
 
 /*--- 电流采样一阶 IIR 低通滤波参数 ---*/

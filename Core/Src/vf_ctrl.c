@@ -20,6 +20,10 @@
 #include <string.h>
 #include <math.h>
 
+/* 引用 main.c 中校准的 ADC 零点（PWM 停止时 128 次平均） */
+extern float FOC_fIaOffsetAdc;
+extern float FOC_fIbOffsetAdc;
+
 /*============================================================================*/
 /* 全局变量                                                                    */
 /*============================================================================*/
@@ -155,11 +159,11 @@ static float vf_pi_run(VF_PI *pst, float fRef, float fFb)
         pst->fIntegral += fKiTerm;
         pst->fIntegral = vf_clamp(pst->fIntegral,
                                   pst->fOutMin * 0.5f,
-                                  pst->fOutMax * 0.5f);
+                                  pst->fOutMax * 0.7f);
     }
 
     float fOut = pst->fOutPrev + fDelta;
-    fOut = vf_clamp(fOut, pst->fOutMin, pst->fOutMax);
+    fOut = vf_clamp(fOut, pst->fOutMin, pst->fOutMax * 1.1f);
     pst->fOutPrev = fOut;
     return fOut;
 }
@@ -279,9 +283,9 @@ void VF_GetPhaseCurrent(void)
     u16IaRaw = (uint16_t)(ADC1->JDR1);
     u16IbRaw = (uint16_t)(ADC2->JDR1);
 
-    /* 原始值（仅保存用于诊断） */
-    fIa = -1.0f * ((float)u16IaRaw - 1972.0f) / 2048.0f;
-    fIb = -1.0f * ((float)u16IbRaw - 1972.0f) / 2048.0f;
+    /* 原始值（使用 main.c 校准的 ADC 零点） */
+    fIa = -1.0f * ((float)u16IaRaw - FOC_fIaOffsetAdc) / 2048.0f;
+    fIb = -1.0f * ((float)u16IbRaw - FOC_fIbOffsetAdc) / 2048.0f;
     g_stVFCtrl.f32IaRaw = fIa;
     g_stVFCtrl.f32IbRaw = fIb;
 
@@ -446,13 +450,19 @@ void VF_Init(void)
 /*============================================================================*/
 void VF_SetTargetRpm(float fTargetRpm)
 {
+    /* 7阶段(OBS_RUNNING)后，最低转速强制为450RPM */
+    if (g_stVFCtrl.eStage >= VF_STAGE_OBS_RUNNING)
+    {
+        if (fTargetRpm < 450.0f)
+            fTargetRpm = 450.0f;
+    }
     g_stVFCtrl.f32TargetRpm = fTargetRpm;
 
     /* 根据目标转速动态调整速度 PI 输出限幅 */
     if (fTargetRpm >= 800.0f)
-        g_stVFCtrl.f32SpeedPiOutMax = 0.85f;
+        g_stVFCtrl.f32SpeedPiOutMax = 0.95f;
     else if (fTargetRpm >= 450.0f)
-        g_stVFCtrl.f32SpeedPiOutMax = 0.75f;
+        g_stVFCtrl.f32SpeedPiOutMax = 0.85f;
     else
         g_stVFCtrl.f32SpeedPiOutMax = 0.50f;
     g_stVFCtrl.stPiSpeed.fOutMax = g_stVFCtrl.f32SpeedPiOutMax;
@@ -853,7 +863,7 @@ void VF_ControlStep(void)
                 if (fPreload > 0.30f)
                     fPreload = 0.30f;
 
-                g_stVFCtrl.f32IqBase = fPreload;   /* ← 保存为前馈基准 */
+                g_stVFCtrl.f32IqBase   = fPreload;   /* ← 保存为前馈基准 */
 
                 /* 速度 PI 从 0 开始，只输出修正量 */
                 g_stVFCtrl.stPiSpeed.fKp       = VF_SPEED_PI_KP;
