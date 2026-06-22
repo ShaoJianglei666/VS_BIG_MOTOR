@@ -450,12 +450,6 @@ void VF_Init(void)
 /*============================================================================*/
 void VF_SetTargetRpm(float fTargetRpm)
 {
-    /* 7阶段(OBS_RUNNING)后，最低转速强制为450RPM */
-    if (g_stVFCtrl.eStage >= VF_STAGE_OBS_RUNNING)
-    {
-        if (fTargetRpm < 450.0f)
-            fTargetRpm = 450.0f;
-    }
     g_stVFCtrl.f32TargetRpm = fTargetRpm;
 
     /* 根据目标转速动态调整速度 PI 输出限幅 */

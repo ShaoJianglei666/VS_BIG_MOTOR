@@ -641,12 +641,19 @@ int main(void)
         float fTargetRpm;
         static float s_fLastTargetRpm = 0.0f;
 
+        /* 7阶段以上 ADC 下限提升到450，避免浪费300-450区间 */
+        float fAdcMinSpeed = ADC_RPM_MIN_SPEED;  /* 默认300 */
+#if USE_VF_CTRL
+        if (g_stVFCtrl.eStage >= VF_STAGE_OBS_RUNNING)
+            fAdcMinSpeed = 450.0f;
+#endif
+
         if (adc_val >= ADC_RPM_MIN_VAL)
-            fTargetRpm = ADC_RPM_MIN_SPEED;
+            fTargetRpm = fAdcMinSpeed;
         else if (adc_val <= ADC_RPM_MAX_VAL)
             fTargetRpm = ADC_RPM_MAX_SPEED;
         else
-            fTargetRpm = ADC_RPM_MIN_SPEED + (ADC_RPM_MAX_SPEED - ADC_RPM_MIN_SPEED) *
+            fTargetRpm = fAdcMinSpeed + (ADC_RPM_MAX_SPEED - fAdcMinSpeed) *
                          (float)(ADC_RPM_MIN_VAL - adc_val) / (float)(ADC_RPM_MIN_VAL - ADC_RPM_MAX_VAL);
 
         /* RPM 死区滤波：变化量小于阈值时不更新，消除抖动 */
