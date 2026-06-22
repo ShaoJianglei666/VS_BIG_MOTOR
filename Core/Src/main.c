@@ -37,7 +37,7 @@
 #if USE_VF_CTRL
 #define SPEED_RUN          200.0f   /* 目标转速 (RPM) */
 #define SPEED_STEP_RPM     50.0f    /* 加减速步长 (RPM) */
-#define VF_TARGET_ACCEL    60.0f    /* VF 加速度 (RPM/s) */
+#define VF_TARGET_ACCEL    120.0f   /* VF 加速度 (RPM/s) */
 #endif
 
 /*--- IF/FOC 模式参数（USE_VF_CTRL=0 时生效） ---*/
@@ -50,7 +50,7 @@
 #define ADC_RPM_MIN_VAL    4000     /* 旋钮最小时 ADC 读数（映射起点） */
 #define ADC_RPM_MAX_VAL    2100     /* 旋钮最大时 ADC 读数（映射终点） */
 #define ADC_RPM_MIN_SPEED  300.0f   /* 最低目标转速 (RPM) */
-#define ADC_RPM_MAX_SPEED  1250.0f  /* 最高目标转速 (RPM) */
+#define ADC_RPM_MAX_SPEED  2000.0f  /* 最高目标转速 (RPM) */
 /* USER CODE END PD
 
 /* Private macro -------------------------------------------------------------*/

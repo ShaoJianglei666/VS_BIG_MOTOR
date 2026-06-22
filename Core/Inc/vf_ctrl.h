@@ -119,13 +119,13 @@ extern "C" {
 /** @brief 电流限制 (pu) — 超过此值则降低 Vq 防止过流
   *        基于 ADC 采样的相电流幅值做简单限幅
   *        0.53pu × 94.3A ≈ 50A */
-#define VF_CURRENT_LIMIT_PU             0.32f   /* 50A@94.3A基值 */
+#define VF_CURRENT_LIMIT_PU             0.12f   /* 50A@94.3A基值 */
 
 /** @brief VF→IF 切换延时 (帧) — VF_RUNNING 后等待 2s 再切 */
 #define VF_IF_SWITCH_DELAY              5000U  /* 2s @ 10kHz */
 
 /** @brief VF→IF blend 过渡帧数 */
-#define VF_IF_BLEND_FRAMES              20000U  /* 2s @ 10kHz */
+#define VF_IF_BLEND_FRAMES              10000U  /* 1s @ 10kHz */
 
 /** @brief IF 电流目标 (pu) — q 轴电流 */
 #define VF_IF_IQ_TARGET_PU              0.03f   /* 1.5A */
@@ -134,7 +134,7 @@ extern "C" {
 #define VF_IF_HOLD_FRAMES               20000U  /* 2s @ 10kHz */
 
 /** @brief IF 开环稳定后切观测角的等待帧数 */
-#define VF_OBS_SWITCH_DELAY             25000U  /* 5s @ 10kHz */
+#define VF_OBS_SWITCH_DELAY             12500U  /* 1.25s @ 10kHz */
 
 /** @brief 开环角度到观测角度渐进切换帧数 */
 #define VF_OBS_TRANSITION_FRAMES        5000U   /* 500ms @ 10kHz */
