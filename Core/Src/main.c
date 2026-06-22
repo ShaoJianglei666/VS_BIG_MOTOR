@@ -37,7 +37,7 @@
 #if USE_VF_CTRL
 #define SPEED_RUN          200.0f   /* 目标转速 (RPM) */
 #define SPEED_STEP_RPM     50.0f    /* 加减速步长 (RPM) */
-#define VF_TARGET_ACCEL    150.0f   /* VF 加速度 (RPM/s) */
+#define VF_TARGET_ACCEL    60.0f    /* VF 加速度 (RPM/s) */
 #endif
 
 /*--- IF/FOC 模式参数（USE_VF_CTRL=0 时生效） ---*/
@@ -589,35 +589,9 @@ int main(void)
     }
 
 #if USE_VF_CTRL
-    /*--- VF 模式：PC9 加速 +50rpm ---*/
-    if (KEY_GetEvent(KEY_ID_SPEED_UP) == KEY_EVENT_PRESS)
-    {
-        if (s_u8MotorRunning)
-        {
-            float fNewTarget = g_stVFCtrl.f32TargetRpm + SPEED_STEP_RPM;
-            if (fNewTarget > 3000.0f)
-            {
-                fNewTarget = 3000.0f;
-            }
-            VF_SetTargetRpm(fNewTarget);
-        }
-    }
+    /*--- VF 模式：加速功能已取消 ---*/
 #else
-    /*--- 闭环后单击 PC9：目标速度 +50rpm ---*/
-    if (KEY_GetEvent(KEY_ID_SPEED_UP) == KEY_EVENT_PRESS)
-    {
-#if !FOC_FORCE_OPEN_LOOP
-        if (s_u8MotorRunning && (g_stCtrl.eMode == FOC_MODE_CLOSED_LOOP))
-        {
-            float fNewTarget = g_stCtrl.f32TargetRpm + SPEED_STEP_RPM;
-            if (fNewTarget > FOC_OBS_MAX_SPEED_RPM)
-            {
-                fNewTarget = FOC_OBS_MAX_SPEED_RPM;
-            }
-            g_stCtrl.f32TargetRpm = fNewTarget;
-        }
-#endif
-    }
+    /*--- FOC 模式：加速功能已取消 ---*/
 #endif
 
     /*--- ADC 旋钮连续调速（电机运行时生效） ---*/

@@ -450,11 +450,11 @@ void VF_SetTargetRpm(float fTargetRpm)
 
     /* 根据目标转速动态调整速度 PI 输出限幅 */
     if (fTargetRpm >= 800.0f)
-        g_stVFCtrl.f32SpeedPiOutMax = 0.75f;
+        g_stVFCtrl.f32SpeedPiOutMax = 0.85f;
     else if (fTargetRpm >= 450.0f)
-        g_stVFCtrl.f32SpeedPiOutMax = 0.50f;
+        g_stVFCtrl.f32SpeedPiOutMax = 0.75f;
     else
-        g_stVFCtrl.f32SpeedPiOutMax = 0.25f;
+        g_stVFCtrl.f32SpeedPiOutMax = 0.50f;
     g_stVFCtrl.stPiSpeed.fOutMax = g_stVFCtrl.f32SpeedPiOutMax;
 
     /* 如果当前停止且目标 > 0，自动进入启动流程 */
@@ -841,25 +841,29 @@ void VF_ControlStep(void)
             /* 过渡完成，完全使用观测器角度 */
             g_stVFCtrl.f32Theta = g_stVFCtrl.stObs.f32ThetaObs;
 
-            /*--- 预载速度 PI，确保 Iq 输出不跳变 ---*/
+            /*--- 保存 Iq 前馈基准值，速度 PI 只输出修正量（Ki=0 也能维持基准） ---*/
             {
                 float fObsSpd = g_stVFCtrl.stObs.f32SpeedObs;
                 if (fObsSpd < 0.0f) fObsSpd = 0.0f;
 
-                /* 用当前 Iq_target 作为预载值，确保至少 VF_IF_IQ_TARGET_PU */
+                /* 用当前 Iq_target 作为前馈基准值，确保至少 VF_IF_IQ_TARGET_PU */
                 float fPreload = g_stVFCtrl.f32IqTarget;
                 if (fPreload < VF_IF_IQ_TARGET_PU)
                     fPreload = VF_IF_IQ_TARGET_PU;
+                if (fPreload > 0.30f)
+                    fPreload = 0.30f;
 
+                g_stVFCtrl.f32IqBase = fPreload;   /* ← 保存为前馈基准 */
+
+                /* 速度 PI 从 0 开始，只输出修正量 */
                 g_stVFCtrl.stPiSpeed.fKp       = VF_SPEED_PI_KP;
                 g_stVFCtrl.stPiSpeed.fKi       = VF_SPEED_PI_KI;
-                /* fErrPrev / fProportional 在下方设完 f32SpeedTarget 后重算 */
-                g_stVFCtrl.stPiSpeed.fOutPrev  = fPreload;
-                g_stVFCtrl.stPiSpeed.fIntegral = fPreload;
+                g_stVFCtrl.stPiSpeed.fOutPrev  = 0.0f;
+                g_stVFCtrl.stPiSpeed.fIntegral = 0.0f;
                 g_stVFCtrl.stPiSpeed.fOutMax   = g_stVFCtrl.f32SpeedPiOutMax;
                 g_stVFCtrl.stPiSpeed.fOutMin   = VF_SPEED_PI_OUT_MIN;
 
-                /* 同时预载 q 电流 PI，保持 Vq 连续 */
+                /* 同时预载 q 电流 PI（从 fPreload 开始），保持 Vq 连续 */
                 g_stVFCtrl.stPiQ.fErrPrev = fPreload - g_stVFCtrl.f32Iq;
                 g_stVFCtrl.stPiQ.fOutPrev = g_stVFCtrl.f32VqPiOut;
                 g_stVFCtrl.stPiQ.fIntegral = g_stVFCtrl.f32VqPiOut;
@@ -867,12 +871,11 @@ void VF_ControlStep(void)
             }
 
             /* 速度 ramp 从当前观测速度开始，最终目标由 f32TargetRpm（ADC 设定）决定 */
-            /* 不覆盖 f32TargetRpm — 保留主循环 ADC 设定的值 */
             g_stVFCtrl.f32SpeedTarget = g_stVFCtrl.stObs.f32SpeedObs;
             if (g_stVFCtrl.f32SpeedTarget < 50.0f)
                 g_stVFCtrl.f32SpeedTarget = 50.0f;
 
-            /* ★ 预载 PI 的 fErrPrev 必须在 f32SpeedTarget 设完之后，否则会用 0 算 */
+            /* 速度 PI 从 0 开始，初始误差 = SpeedTarget - ObsSpeed ≈ 0 */
             {
                 float fObsSpd2 = g_stVFCtrl.stObs.f32SpeedObs;
                 if (fObsSpd2 < 0.0f) fObsSpd2 = 0.0f;
@@ -930,13 +933,21 @@ void VF_ControlStep(void)
                 g_stVFCtrl.f32Theta,
                 &g_stVFCtrl.f32Id, &g_stVFCtrl.f32Iq);
 
-        /* 速度 PI（降采样运行，避免 10kHz 过冲导致 Bang-Bang） */
+        /* 速度 PI（降采样运行，避免 10kHz 过冲导致 Bang-Bang）
+         * Iq 目标 = 前馈基准 + PI 修正量
+         * 即使 Ki=0，基准值也不丢失 */
         if ((g_stVFCtrl.u32SpeedRunCount % VF_SPEED_DECIMATION) == 0U)
         {
-            g_stVFCtrl.f32IqTarget = vf_pi_run(
+            float fPiOut = vf_pi_run(
                 &g_stVFCtrl.stPiSpeed,
                 g_stVFCtrl.f32SpeedTarget,
                 g_stVFCtrl.stObs.f32SpeedObs);
+            g_stVFCtrl.f32IqTarget = g_stVFCtrl.f32IqBase + fPiOut;
+            /* 限幅到安全范围 */
+            if (g_stVFCtrl.f32IqTarget < 0.0f)
+                g_stVFCtrl.f32IqTarget = 0.0f;
+            if (g_stVFCtrl.f32IqTarget > g_stVFCtrl.f32SpeedPiOutMax)
+                g_stVFCtrl.f32IqTarget = g_stVFCtrl.f32SpeedPiOutMax;
             g_stVFCtrl.f32IfITarget = g_stVFCtrl.f32IqTarget;
         }
 

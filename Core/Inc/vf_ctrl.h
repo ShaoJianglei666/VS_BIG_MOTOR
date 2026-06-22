@@ -77,11 +77,11 @@ extern "C" {
   *        在低频时定子电阻压降占主导，需额外提升电压。
   *        此电机 R=0.006Ω、L=35µH，极低阻抗导致低频电流对电压极敏感。
   *        提升电压帮助克服静摩擦和齿槽转矩。
-  *        取 10% 基值电压 ≈ 3.46V，约对应 3.46/0.006 ≈ 577A 峰值 — 实际受
+  *        取 30% 基值电压 ≈ 5.2V，约对应 5.2/0.006 ≈ 867A 峰值 — 实际受
   *        电源限流和 MOSFET 导通电阻限制，不会达到此值。
   *        如仍顿挫可逐步增大此值。
   */
-#define VF_BOOST_VOLTAGE_PU             0.10f
+#define VF_BOOST_VOLTAGE_PU             0.30f
 
 /** @brief 最大输出电压 (pu)，限制 SVPWM 不过调制 */
 #define VF_MAX_VOLTAGE_PU               0.92f
@@ -96,7 +96,7 @@ extern "C" {
 /*--- 频率斜坡参数 ---*/
 
 /** @brief 加速度 (RPM/s) — 降低加速度防止失步 */
-#define VF_ACCEL_RPM_PER_SEC            200.0f
+#define VF_ACCEL_RPM_PER_SEC            60.0f
 
 /** @brief 每帧转速增量 (RPM) = Accel * Ts */
 #define VF_SPEED_STEP_RPM               (VF_ACCEL_RPM_PER_SEC * VF_CTRL_TS)
@@ -110,15 +110,15 @@ extern "C" {
 #define VF_ALIGN_FRAMES                 3000U   /* 300ms @ 10kHz */
 
 /** @brief 对齐电压 (pu) — 对齐阶段 d 轴电压幅值 */
-#define VF_ALIGN_VOLTAGE_PU             0.04f
+#define VF_ALIGN_VOLTAGE_PU             0.15f
 
 /** @brief ALIGN→RAMPING 软过渡帧数 — 从 Vd 对齐平滑切到 Vq 旋转 */
-#define VF_SOFTSTART_FRAMES             1000U   /* 100ms @ 10kHz */
+#define VF_SOFTSTART_FRAMES             3000U   /* 300ms @ 10kHz */
 
 /** @brief 电流限制 (pu) — 超过此值则降低 Vq 防止过流
   *        基于 ADC 采样的相电流幅值做简单限幅
   */
-#define VF_CURRENT_LIMIT_PU             0.20f   /* 5A@50A基值 */
+#define VF_CURRENT_LIMIT_PU             0.30f   /* 15A@50A基值 */
 
 /** @brief VF→IF 切换延时 (帧) — VF_RUNNING 后等待 2s 再切 */
 #define VF_IF_SWITCH_DELAY              20000U  /* 2s @ 10kHz */
@@ -311,6 +311,7 @@ typedef struct
     float     f32SpeedTarget;   /**< 速度环 ramp 目标 (RPM) */
     uint32_t  u32SpeedRunCount; /**< 速度环运行计数器 */
     float     f32SpeedPiOutMax; /**< 速度 PI 输出限幅，随目标转速动态变化 */
+    float     f32IqBase;        /**< Iq 前馈基准值 (pu)，速度 PI 在此之上做修正 */
 
     /*--- dq 电流反馈 ---*/
     float     f32Id;            /**< d 轴电流反馈 (pu) */
