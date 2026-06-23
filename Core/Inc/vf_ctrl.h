@@ -191,7 +191,7 @@ extern "C" {
 #define VF_OBS_PLL_SPEED_BLEND          0.002f
 #define VF_OBS_PLL_ERR_MAX              0.25f
 #define VF_OBS_MIN_BEMF_PU              0.01f
-#define VF_OBS_LOCK_BEMF_SQ_THR         0.00005f
+#define VF_OBS_LOCK_BEMF_SQ_THR         0.00004f
 #define VF_OBS_LOCK_SPEED_RPM           150.0f
 
 /*--- 电流采样一阶 IIR 低通滤波参数 ---*/
