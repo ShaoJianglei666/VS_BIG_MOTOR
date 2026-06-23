@@ -454,9 +454,9 @@ void VF_SetTargetRpm(float fTargetRpm)
 
     /* 根据目标转速动态调整速度 PI 输出限幅 */
     if (fTargetRpm >= 800.0f)
-        g_stVFCtrl.f32SpeedPiOutMax = 0.95f;
+        g_stVFCtrl.f32SpeedPiOutMax = 1.20f;
     else if (fTargetRpm >= 450.0f)
-        g_stVFCtrl.f32SpeedPiOutMax = 0.85f;
+        g_stVFCtrl.f32SpeedPiOutMax = 1.00f;
     else
         g_stVFCtrl.f32SpeedPiOutMax = 0.50f;
     g_stVFCtrl.stPiSpeed.fOutMax = g_stVFCtrl.f32SpeedPiOutMax;

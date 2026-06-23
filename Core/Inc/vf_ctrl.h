@@ -92,7 +92,7 @@ extern "C" {
   *        低于此频率 V/f 为线性，高于此频率电压保持恒定（弱磁区）
   *        默认 1.0 = 额定频率
   */
-#define VF_CORNER_FREQ_PU               1.0f
+#define VF_CORNER_FREQ_PU               2.0f   /* 拐点提高到2000RPM，避免中途跳满压 */
 
 /*--- 频率斜坡参数 ---*/
 
@@ -167,8 +167,8 @@ extern "C" {
 /** @brief IF dq 电流环 PI 修正限幅 (pu) */
 #define VF_IF_PI_CORRECTION_MAX         0.15f
 
-/** @brief IF dq 电流环 Vq PI 输出限幅 (pu) */
-#define VF_IF_PI_OUT_MAX                0.85f
+/** @brief IF dq 电流环 Vq PI 输出限幅 (pu) — 与电流限幅一致，防止限幅解除跳变 */
+#define VF_IF_PI_OUT_MAX                1.20f
 #define VF_IF_PI_OUT_MIN                (-VF_IF_PI_OUT_MAX)
 
 /** @brief IF 过流保护阈值 (pu) — 暂提高避免切换毛刺误触发 */
